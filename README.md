@@ -1,3 +1,7 @@
+Fill the credentials on config/sing-box.json or config/v2ray.json depending on
+your choice of a proxy programme. Then run
+`./bsbf-openwrt-imagebuilder-config-generator.sh`
+
 Once the script is run, the package list and the uci-defaults script can be used
 as below to request an image from OpenWrt's firmware-selector:
 
