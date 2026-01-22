@@ -5,13 +5,13 @@
 
 BSBF_FEED="https://raw.githubusercontent.com/bondingshouldbefree/bsbf-client-scripts/refs/heads/main"
 
-packages="ethtool fping kmod-nft-tproxy mptcpd ip-full tc-full kmod-sched kmod-sched-bpf coreutils-base64 sing-box-tiny"
+packages="ethtool fping mptcpd ip-full tc-full kmod-sched kmod-sched-bpf coreutils-base64 sing-box-tiny"
 
 # Parse arguments.
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--v2ray)
-		packages="$packages -sing-box-tiny v2ray-core"
+		packages="$packages -sing-box-tiny v2ray-core kmod-nft-tproxy"
 		v2ray=1
 		;;
 	--tcp-in-udp-big-endian)
@@ -68,7 +68,29 @@ $(cat config/v2ray.json)
 EOF
 
 uci set v2ray.enabled.enabled='1'
-uci commit v2ray"
+uci commit v2ray
+
+uci add_list dhcp.lan.dhcp_option='6,1.1.1.1,1.0.0.1'
+uci commit dhcp
+
+# Add rule to use routing table 100 for transparent proxy traffic.
+uci add network rule
+uci set network.@rule[-1].priority='0'
+uci set network.@rule[-1].lookup='100'
+uci set network.@rule[-1].mark='1'
+
+# Add route to route transparent proxy traffic to the loopback interface.
+uci add network route
+uci set network.@route[-1].interface='loopback'
+uci set network.@route[-1].type='local'
+uci set network.@route[-1].target='0.0.0.0/0'
+uci set network.@route[-1].table='100'
+uci commit network
+
+# nftables Configuration
+cat <<'EOF' > /etc/nftables.d/99-bsbf-proxy.nft
+$(cat config/99-bsbf-proxy.nft)
+EOF"
 
 # Decide the TCP-in-UDP object.
 tcp_in_udp_endianness="tcp_in_udp_tc_le.o"
@@ -159,21 +181,7 @@ done
 # relies on correct system time so it's crucial to have working DNS to sync
 # system time.
 
-uci add_list dhcp.lan.dhcp_option='6,1.1.1.1,1.0.0.1'
 uci add_list dhcp.@dnsmasq[0].server='8.8.8.8'
-
-# Add rule to use routing table 100 for transparent proxy traffic.
-uci add network rule
-uci set network.@rule[-1].priority='0'
-uci set network.@rule[-1].lookup='100'
-uci set network.@rule[-1].mark='1'
-
-# Add route to route transparent proxy traffic to the loopback interface.
-uci add network route
-uci set network.@route[-1].interface='loopback'
-uci set network.@route[-1].type='local'
-uci set network.@route[-1].target='0.0.0.0/0'
-uci set network.@route[-1].table='100'
 
 # Commit changes.
 uci commit network
@@ -183,11 +191,6 @@ uci commit dhcp
 # mptcpd Configuration
 cat <<'EOF' > /etc/mptcpd/mptcpd.conf
 $(cat config/mptcpd.conf)
-EOF
-
-# nftables Configuration
-cat <<'EOF' > /etc/nftables.d/99-bsbf-proxy.nft
-$(cat config/99-bsbf-proxy.nft)
 EOF
 
 $proxy_programme
