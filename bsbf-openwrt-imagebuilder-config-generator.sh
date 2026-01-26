@@ -7,6 +7,11 @@ BSBF_FEED="https://raw.githubusercontent.com/bondingshouldbefree/bsbf-client-scr
 
 packages="ethtool fping mptcpd ip-full tc-full kmod-sched kmod-sched-bpf coreutils-base64 sing-box-tiny"
 
+usage() {
+	echo "Usage: $0 [--v2ray --tcp-in-udp-big-endian --tcp-in-udp-port <port> --no-luci --dongle-modem --quectel-modem --usb-adapters-and-android-tethering --ios-tethering --mikrotik-tools --debug-tools]"
+	exit 1
+}
+
 # Parse arguments.
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -16,6 +21,12 @@ while [ $# -gt 0 ]; do
 		;;
 	--tcp-in-udp-big-endian)
 		tcp_in_udp_be=1
+		;;
+	--tcp-in-udp-port)
+		[ -z "$2" ] && usage
+		tcp_in_udp_port="$2"
+		shift 2
+		continue
 		;;
 	--no-luci)
 		packages="$packages -luci"
@@ -45,8 +56,7 @@ while [ $# -gt 0 ]; do
 		bsbf_netspeed=1
 		;;
 	*)
-		echo "Usage: $0 [--v2ray --tcp-in-udp-big-endian --no-luci --dongle-modem --quectel-modem --usb-adapters-and-android-tethering --ios-tethering --mikrotik-tools --debug-tools]"
-		exit 1
+		usage
 		;;
 	esac
 	shift
@@ -92,9 +102,11 @@ cat <<'EOF' > /etc/nftables.d/99-bsbf-proxy.nft
 $(cat config/99-bsbf-proxy.nft)
 EOF"
 
-# Decide the TCP-in-UDP object.
+# Decide the TCP-in-UDP object and port.
 tcp_in_udp_endianness="tcp_in_udp_tc_le.o"
 [ -n "$tcp_in_udp_be" ] && tcp_in_udp_endianness="tcp_in_udp_tc_be.o"
+tcp_in_udp=$(curl -s $BSBF_FEED/bsbf-tcp-in-udp/files/usr/sbin/bsbf-tcp-in-udp)
+[ -n "$tcp_in_udp_port" ] && tcp_in_udp="$(echo "$tcp_in_udp" | sed "s/sport 31001/sport $tcp_in_udp_port/")"
 
 # Additional options.
 [ -n "$bsbf_usb_netdev_autodhcp" ] && additional_options="# bsbf-usb-netdev-autodhcp
@@ -206,7 +218,7 @@ $(curl -s $BSBF_FEED/bsbf-tcp-in-udp/files/usr/local/share/tcp-in-udp/$tcp_in_ud
 EOF
 
 cat <<'EOF' > /usr/sbin/bsbf-tcp-in-udp
-$(curl -s $BSBF_FEED/bsbf-tcp-in-udp/files/usr/sbin/bsbf-tcp-in-udp)
+$tcp_in_udp
 EOF
 chmod +x /usr/sbin/bsbf-tcp-in-udp
 
